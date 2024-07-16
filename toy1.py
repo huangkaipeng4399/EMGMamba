@@ -6,6 +6,6 @@ landmarks_train = np.load("/user/ZY/EMG2Face/EMG3D/data/data_new51/face_points_t
 landmarks_test = np.load("/user/ZY/EMG2Face/EMG3D/data/data_new51/face_points_test.npy", allow_pickle=True)
 landmarks_val = np.load("/user/ZY/EMG2Face/EMG3D/data/data_new51/face_points_val.npy", allow_pickle=True) 
 
-
-
-plt.show(landmarks_train[0][:][0],landmarks_train[0][:][1],'ro')
+muscle_data_train = np.load("/user/ZY/EMG2Face/EMG3D/data/data_align/align_emg_data_train.npy", allow_pickle=True)
+print(muscle_data_train.shape)
+print(landmarks_train.shape)

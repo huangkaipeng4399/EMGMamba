@@ -27,16 +27,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
 from einops import rearrange, repeat, einsum
+import sys
 
 
 @dataclass
 class ModelArgs:
+    emg_features:int
     d_model: int
     n_layer: int
     vocab_size: int
     d_state: int = 16
     expand: int = 2
-    dt_rank: Union[int, str] = 1
+    dt_rank: Union[int, str] = 'auto'
     d_conv: int = 4 
     pad_vocab_size_multiple: int = 8
     conv_bias: bool = True
@@ -45,13 +47,12 @@ class ModelArgs:
     def __post_init__(self):
         self.d_inner = int(self.expand * self.d_model)
         
-        # if self.dt_rank == 'auto':
-        #     self.dt_rank=1
-            #  self.dt_rank = math.ceil(self.d_model / 16)
+        if self.dt_rank == 'auto':
+            self.dt_rank = math.ceil(self.d_model / 16)
             
-        # if self.vocab_size % self.pad_vocab_size_multiple != 0:
-        #     self.vocab_size += (self.pad_vocab_size_multiple
-        #                         - self.vocab_size % self.pad_vocab_size_multiple)
+        if self.vocab_size % self.pad_vocab_size_multiple != 0:
+            self.vocab_size += (self.pad_vocab_size_multiple
+                                - self.vocab_size % self.pad_vocab_size_multiple)
 
 
 class Mamba(nn.Module):
@@ -59,17 +60,18 @@ class Mamba(nn.Module):
         """Full Mamba model."""
         super().__init__()
         self.args = args
-        
+        self.fc1=nn.Linear(args.emg_features,args.d_model)
         # self.embedding = nn.Embedding(args.vocab_size, args.d_model)
         self.layers = nn.ModuleList([ResidualBlock(args) for _ in range(args.n_layer)])
         self.norm_f = RMSNorm(args.d_model)
+        self.fc2=nn.Linear(args.d_model,args.emg_features)
 
-        self.lm_head = nn.Linear(args.d_model, args.vocab_size, bias=False)
+        self.fc3 = nn.Linear(80, 102, bias=False)
         # self.lm_head.weight = self.embedding.weight  # Tie output projection to embedding weights.
-                                                     # See "Weight Tying" paper
+        # See "Weight Tying" paper
 
 
-    def forward(self, input_ids):
+    def forward(self, x):
         """
         Args:
             input_ids (long tensor): shape (b, l)    (See Glossary at top for definitions of b, l, d_in, n...)
@@ -82,12 +84,19 @@ class Mamba(nn.Module):
 
         """
         # x = self.embedding(input_ids)
-        
+        x=x.float()
+        x=self.fc1(x)
         for layer in self.layers:
             x = layer(x)
-            
+        # raise SystemExit("after this")
         x = self.norm_f(x)
-        logits = self.lm_head(x)
+        x=self.fc2(x)
+        x=F.silu(x)
+        x=x.view(-1,80)
+        # raise SystemExit("after this")
+        x=self.fc3(x)
+        
+        logits = x.view(-1,51,2)
 
         return logits
 
@@ -179,6 +188,7 @@ class MambaBlock(nn.Module):
         x = rearrange(x, 'b d_in l -> b l d_in')
         
         x = F.silu(x)
+        #到这里，先对x做了卷积操作
 
         y = self.ssm(x)
         
@@ -291,3 +301,5 @@ class RMSNorm(nn.Module):
 
         return output
         
+
+#batchnorm
